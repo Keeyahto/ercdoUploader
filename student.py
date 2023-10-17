@@ -45,6 +45,8 @@ class StudentsExtractor:
             self.extract_disciplines(current_student)
             self.extract_modules(current_student)
             self.extract_practices(current_student)
+            self.extract_attestations(current_student)
+            self.extract_course_works(current_student)
             self.students.append(current_student)
 
     def extract_disciplines(self, current_student):
@@ -81,6 +83,22 @@ class StudentsExtractor:
             details = list(details)
             current_student.practice_details = details
 
+    def extract_attestations(self, current_student):
+        query = "SELECT attestationName, attestationRate FROM AttestationDetails WHERE spoID = ?"
+        self.cursor.execute(query, (current_student.spoId,))
+        attestation_details = self.cursor.fetchall()
+        for details in attestation_details:
+            details = list(details)
+            current_student.attestation_details = details
+
+    def extract_course_works(self, current_student):
+        query = "SELECT cwName, cwRate FROM CourseworkDetails WHERE spoID = ?"
+        self.cursor.execute(query, (current_student.spoId,))
+        discipline_details = self.cursor.fetchall()
+        for details in discipline_details:
+            details = list(details)
+            current_student.course_works_details[details[0]] = details[1] if details[1] else ''
+
     def run(self):
         self.extract_students()
         self.process_students()
@@ -91,19 +109,18 @@ class StudentsExtractor:
 
     def process_students(self):
         while self.students:
-            current_specialty_code = self.students[0].specialty_code
-            current_students = [student for student in self.students if student.specialty_code == current_specialty_code]
+            current_qualify = self.students[0].qualify
+            current_students = [student for student in self.students if student.qualify == current_qualify]
             self.export_students(current_students)
             self.students = [student for student in self.students if student not in current_students]
 
     def export_students(self, students: list[Student]):
 
-
         header1 = ['Срок освоения образовательной программы по очной форме обучения',
-                           'ВСЕГО часов теоретического обучения,', 'в том числе аудиторных часов:',
-                           'Практики', 'Государственная итоговая аттестация']
+                   'ВСЕГО часов теоретического обучения,', 'в том числе аудиторных часов:',
+                   'Практики', 'Государственная итоговая аттестация']
 
-        writer = pd.ExcelWriter(f"{students[0].specialty_code}.xlsx", engine='openpyxl')
+        writer = pd.ExcelWriter(f"{students[0].qualify}.xlsx", engine='openpyxl')
         wb = writer.book
         df = pd.DataFrame({'ФАМИЛИЯ': [x.surname for x in students],
                            'ИМЯ': [x.name for x in students],
@@ -123,18 +140,20 @@ class StudentsExtractor:
                            'Основание приема на обучение': ['' for x in students],
                            'Адрес электронной почты (email)': ['' for x in students],
                            'Председатель Государственной экзаменационной комиссии': ['' for x in students],
-                           'Предыдущий документ об образовании или об образовании и о квалификации': [x.previous_document for x in students],
+                           'Предыдущий документ об образовании или об образовании и о квалификации': [
+                               x.previous_document for x in students],
                            'Вид документа': [x.document_type for x in students],
                            'Решение Государственной экзаменационной комиссии': [x.decision_date for x in students],
-                          })
+                           })
         self.set_disciplines(students, df)
         df['ВСЕГО часов теоретического обучения,'] = [x.teoretical_study_duration for x in students]
         df['в том числе аудиторных часов:'] = [x.auditor_study_duration for x in students]
         df = self.set_modules(students, df)
         self.set_practices(students, df)
+        self.set_attestations(students, df)
+        self.set_course_works(students, df)
         df.to_excel(writer, index=False)
-        wb.save(f"{students[0].specialty_code}.xlsx")
-
+        wb.save(f"{students[0].qualify}.xlsx")
 
     def set_disciplines(self, students, df):
         disciplines_dicts = [student.discipline_details for student in students]
@@ -174,12 +193,38 @@ class StudentsExtractor:
         for practice in practices_header:
             df['Практика' + practice] = [practice_dict.get(practice, '') for practice_dict in practices_dicts]
 
+    def set_attestations(self, students, df):
+        attestations_lists = [student.attestation_details for student in students]
+        # Извлекаем ключи всех словарей в массив
+        attestation_cols = []
+        for i in range(len(max(attestations_lists, key=len))):
+            attestation_cols.append([])
+            for j in range(len(attestations_lists)):
+                try:
+                    attestation_cols[i].append(attestations_lists[j][i])
+                except IndexError:
+                    attestation_cols[i].append('')
+        # Делаем массив уникальных ключей
+        df['Государственная итоговая аттестация  +в том числе:'] = [student.attestation_total_count for student in
+                                                                    students]
+        for i, col in enumerate(attestation_cols):
+            df['Аттестация ' + str(i)] = col
+
+    def set_course_works(self, students, df):
+        course_works_dicts = [student.course_works_details for student in students]
+        # Извлекаем ключи всех словарей в массив
+        list_of_course_works = []
+        for d in course_works_dicts:
+            list_of_course_works.extend(d.keys())
+
+        # Делаем массив уникальных ключей
+        course_works_header = list(set(list_of_course_works))
+
+        for course_work in course_works_header:
+            df[course_work] = [course_works_dict.get(course_work, '') for course_works_dict in course_works_dicts]
 
 
 if __name__ == "__main__":
-    db_name = "KtSpo-backup-2023-09-19.db"  # Замените на имя вашей базы данных
+    db_name = "KtSpo-backup-2023-10-16.db"  # Замените на имя вашей базы данных
     extractor = StudentsExtractor(db_name)
     extractor.run()
-
-
-

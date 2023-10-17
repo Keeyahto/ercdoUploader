@@ -203,9 +203,24 @@ class Student:
 
     @practice_details.setter
     def practice_details(self, x):
-        if not hasattr(self, '_practice_details') or self._discipline_details is None:
+        if not hasattr(self, '_practice_details') or self.practice_details is None:
             self._practice_details = {}
         self._practice_details[x[0]] = self.pipe_join((x[1], x[2]))
+
+    @property
+    def attestation_details(self):
+        if not self._attestation_details:
+            print(f'У студента {self.name} {self.surname} {self.middle_name} остутствует _attestation_details')
+            return ''
+        return self._attestation_details
+
+    @attestation_details.setter
+    def attestation_details(self, x):
+        if not hasattr(self, '_attestation_details') or self._attestation_details is None:
+            self._attestation_details = []
+        self._attestation_details.append(self.pipe_join((x[0], x[1], 'x')))
+
+    course_works_details: dict = {}
 
 
     def pipe_join(self, lst):
